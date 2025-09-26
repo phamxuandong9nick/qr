@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình tạo mã QR & Barcode</title>
+    <!-- Sử dụng Tailwind CSS để làm giao diện nhanh và đẹp -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Thư viện tạo mã QR -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- Thư viện tạo Barcode -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        /* CSS tùy chỉnh để giao diện đẹp hơn */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Tùy chỉnh thanh cuộn cho lịch sử */
+        #history-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        #history-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #history-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #history-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+ 
+    <div class="container mx-auto p-4 sm:p-6 md:p-8">
+        <div class="bg-white max-w-4xl mx-auto rounded-xl shadow-lg p-6 sm:p-8">
+ 
+            <!-- KHU VỰC NHẬP LIỆU -->
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <textarea id="text-input" placeholder="Nhập văn bản hoặc URL... Mỗi dòng sẽ được tạo thành một mã riêng." rows="4" class="flex-grow w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-y"></textarea>
+                <button id="generate-btn" class="w-full sm:w-auto bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-transform transform hover:scale-105">
+                    Tạo mã
+                </button>
+            </div>
+ 
+            <!-- THANH TÙY CHỈNH KÍCH THƯỚC -->
+            <div class="mb-6">
+                <label for="size-slider" class="block mb-2 text-sm font-medium text-gray-700">Kích thước (Pixels): <span id="size-value" class="font-bold text-blue-600">128px</span></label>
+                <input id="size-slider" type="range" min="64" max="400" value="128" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
+ 
+            <!-- KHU VỰC HIỂN THỊ KẾT QUẢ -->
+            <div id="output-container" class="grid grid-cols-1 md:grid-cols-2 gap-6 min-h-[200px] bg-gray-50 p-4 rounded-lg border border-dashed">
+                <!-- Mã QR sẽ được hiển thị ở đây -->
+                <div class="flex flex-col items-center justify-center">
+                    <h3 class="text-lg font-semibold text-gray-600 mb-2">Mã QR</h3>
+                    <div id="qrcode" class="p-2 bg-white border rounded-lg shadow-sm"></div>
+                </div>
+                <!-- Barcode sẽ được hiển thị ở đây -->
+                <div class="flex flex-col items-center justify-center">
+                    <h3 class="text-lg font-semibold text-gray-600 mb-2">Barcode (Code 128)</h3>
+                    <div id="barcode-wrapper" class="p-2 bg-white border rounded-lg shadow-sm flex items-center justify-center min-w-[200px] min-h-[100px]">
+                         <svg id="barcode"></svg>
+                    </div>
+                </div>
+            </div>
+ 
+            <!-- LỊCH SỬ TẠO MÃ -->
+            <div class="mt-8">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="text-2xl font-bold text-gray-800">Lịch sử</h2>
+                    <button id="clear-history-btn" class="text-sm text-red-500 hover:text-red-700 font-semibold">Xóa lịch sử</button>
+                </div>
+                <div id="history-container" class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                    <!-- Các mục lịch sử sẽ được thêm vào đây -->
+                    <p class="text-center text-gray-500">Chưa có lịch sử tạo mã.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+ 
+    <script>
+        // Lấy các phần tử từ DOM
+        const textInput = document.getElementById('text-input');
+        const generateBtn = document.getElementById('generate-btn');
+        const clearHistoryBtn = document.getElementById('clear-history-btn');
+        const sizeSlider = document.getElementById('size-slider');
+        const sizeValue = document.getElementById('size-value');
+        const qrContainer = document.getElementById('qrcode');
+        const barcodeContainer = document.getElementById('barcode');
+        const barcodeWrapper = document.getElementById('barcode-wrapper');
+        const historyContainer = document.getElementById('history-container');
+ 
+        let historyData = [];
+ 
+        // --- QUẢN LÝ LỊCH SỬ VÀ LOCAL STORAGE ---
+ 
+        function saveHistoryToLocalStorage() {
+            localStorage.setItem('qrBarcodeHistory', JSON.stringify(historyData));
+        }
+ 
+        function loadHistoryFromLocalStorage() {
+            const storedHistory = localStorage.getItem('qrBarcodeHistory');
+            if (storedHistory) {
+                historyData = JSON.parse(storedHistory);
+                renderAllHistory();
+            }
+        }
+        
+        function addToHistory(text) {
+            // Thêm vào đầu mảng dữ liệu
+            historyData.unshift({ text });
+            // Lưu vào local storage
+            saveHistoryToLocalStorage();
+            // Hiển thị mục mới nhất lên giao diện
+            renderHistoryItem(text, true); // true để thêm vào đầu danh sách
+        }
+ 
+        function clearHistory() {
+            if (confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử không?")) {
+                historyData = [];
+                localStorage.removeItem('qrBarcodeHistory');
+                renderAllHistory();
+            }
+        }
+ 
+        // --- CÁC HÀM HIỂN THỊ ---
+ 
+        function renderAllHistory() {
+            historyContainer.innerHTML = ''; // Xóa sạch lịch sử hiện tại
+            if (historyData.length === 0) {
+                 historyContainer.innerHTML = '<p class="text-center text-gray-500">Chưa có lịch sử tạo mã.</p>';
+            } else {
+                 historyData.forEach(item => renderHistoryItem(item.text, false)); // false để thêm vào cuối
+            }
+        }
+ 
+        function renderHistoryItem(text, prepend) {
+            // Xóa thông báo "Chưa có lịch sử" nếu có
+            const placeholder = historyContainer.querySelector('p');
+            if (placeholder) {
+                placeholder.remove();
+            }
+ 
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item bg-white p-4 rounded-lg border flex flex-col sm:flex-row items-start sm:items-center gap-4';
+ 
+            const textWrapper = document.createElement('div');
+            textWrapper.className = 'flex-grow w-full';
+            
+            const textLabel = document.createElement('span');
+            textLabel.className = 'text-xs text-gray-500 font-semibold';
+            textLabel.textContent = 'Nội dung:'+text;
+ 
+            const textContent = document.createElement('p');
+            textContent.className = 'text-gray-800 break-all font-mono text-lg';
+            textContent.textContent = text;
+            
+            textWrapper.appendChild(textLabel);
+            textWrapper.appendChild(textContent);
+ 
+            const codesWrapper = document.createElement('div');
+            codesWrapper.className = 'flex items-center gap-4 flex-shrink-0';
+            
+            const qrHistoryDiv = document.createElement('div');
+            qrHistoryDiv.className = 'p-1 bg-white border rounded';
+            
+            new QRCode(qrHistoryDiv, { text, width: 80, height: 80, correctLevel: QRCode.CorrectLevel.L });
+ 
+            codesWrapper.appendChild(qrHistoryDiv);
+ 
+            // Kiểm tra độ dài cho barcode trong lịch sử
+            if (text.length <= 40) {
+                const barcodeHistorySvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                try {
+                    JsBarcode(barcodeHistorySvg, text, {
+                        format: "CODE128",
+                        width: 1.5,
+                        height: 40,
+                        displayValue: true, // Hiển thị giá trị
+                        fontSize: 12,
+                        margin: 5
+                    });
+                    codesWrapper.appendChild(barcodeHistorySvg);
+                } catch (e) { /* Lỗi không mong muốn, bỏ qua */ }
+            } else {
+                const errorPlaceholder = document.createElement('div');
+                errorPlaceholder.className = 'w-auto px-2 h-[60px] flex items-center justify-center text-xs bg-gray-100 text-red-500 rounded';
+                errorPlaceholder.textContent = 'Quá dài (>40)';
+                codesWrapper.appendChild(errorPlaceholder);
+            }
+ 
+            historyItem.appendChild(textWrapper);
+            historyItem.appendChild(codesWrapper);
+ 
+            if (prepend) {
+                historyContainer.prepend(historyItem);
+            } else {
+                historyContainer.appendChild(historyItem);
+            }
+        }
+        
+        function displayGeneratedCodes(text, size) {
+             // --- TẠO MÃ QR ---
+            qrContainer.innerHTML = '';
+            new QRCode(qrContainer, { text, width: size, height: size, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.L });
+ 
+             // --- TẠO BARCODE ---
+            // Xóa thông báo lỗi cũ
+            const oldError = barcodeWrapper.querySelector('.barcode-error');
+            if (oldError) oldError.remove();
+            barcodeContainer.style.display = 'block';
+ 
+            if(text.length > 40) {
+                barcodeContainer.style.display = 'none'; // Ẩn svg
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'barcode-error text-red-500 text-center font-semibold';
+                errorDiv.textContent = 'Văn bản quá dài (> 40 ký tự).';
+                barcodeWrapper.appendChild(errorDiv);
+                return; // Dừng tại đây
+            }
+            
+            try {
+                JsBarcode(barcodeContainer, text, { 
+                    format: "CODE128", 
+                    lineColor: "#000", 
+                    width: 2, 
+                    height: size * 0.5, 
+                    displayValue: true, // Hiển thị giá trị
+                    fontSize: 16
+                });
+            } catch (e) {
+                barcodeContainer.style.display = 'none'; // Ẩn svg nếu có lỗi khác
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'barcode-error text-red-500 text-center font-semibold';
+                errorDiv.textContent = 'Dữ liệu không hợp lệ cho Barcode.';
+                barcodeWrapper.appendChild(errorDiv);
+            }
+        }
+ 
+        // --- HÀM XỬ LÝ SỰ KIỆN CHÍNH ---
+        function handleGenerateRequest() {
+            const inputText = textInput.value.trim();
+            if (!inputText) {
+                alert("Vui lòng nhập văn bản hoặc URL!");
+                return;
+            }
+ 
+            const lines = inputText.split('\n').filter(line => line.trim() !== '');
+            if (lines.length === 0) return;
+            
+            // Xử lý và thêm từng dòng vào lịch sử (từ trên xuống dưới)
+            lines.reverse().forEach(line => {
+                // Tránh thêm trùng lặp nếu mục đã có ở đầu lịch sử
+                if (!historyData.length || historyData[0].text !== line.trim()) {
+                     addToHistory(line.trim());
+                }
+            });
+ 
+            // Hiển thị mã cho dòng cuối cùng
+            const lastLine = lines[lines.length - 1].trim();
+            const size = parseInt(sizeSlider.value, 10);
+            displayGeneratedCodes(lastLine, size);
+ 
+            // textInput.value = ''; // Tùy chọn: Xóa input sau khi tạo
+        }
+ 
+        // --- GÁN SỰ KIỆN ---
+        document.addEventListener('DOMContentLoaded', loadHistoryFromLocalStorage);
+        
+        generateBtn.addEventListener('click', handleGenerateRequest);
+        clearHistoryBtn.addEventListener('click', clearHistory);
+ 
+        textInput.addEventListener('keyup', (event) => {
+            // Sử dụng Ctrl+Enter để tạo, tránh việc tạo mã khi đang gõ Enter xuống dòng
+            if (event.ctrlKey && event.key === 'Enter') {
+                handleGenerateRequest();
+            }
+        });
+        
+        sizeSlider.addEventListener('input', (e) => {
+            sizeValue.textContent = `${e.target.value}px`;
+        });
+    </script>
+ 
+</body>
+</html>
+ 
